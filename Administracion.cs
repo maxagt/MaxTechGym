@@ -41,7 +41,7 @@ namespace MaxTechGym
 
         public DataTable BindSource()
         {
-            DataAdapter = Form_Main.ConnectDBAdapter("select * from precios where cliente = '" + Program.CLIENTE + "' ORDER BY Orden");
+            DataAdapter = Form_Main.ConnectDBAdapter("select * from precios where cliente = '" + Program.CLIENT + "' ORDER BY Orden");
             ds.Clear();
             DataAdapter.Fill(ds);
 
@@ -104,7 +104,7 @@ namespace MaxTechGym
         //Insert a new row and update the client with the backend data
         private void agregarElementoToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            string sql = "insert into precios(cliente) values ('" + Program.CLIENTE + "')";
+            string sql = "insert into precios(cliente) values ('" + Program.CLIENT + "')";
             MySqlDataReader reader = Form_Main.sqlExec(sql);
 
             listaPrecios.DataSource = BindSource();    

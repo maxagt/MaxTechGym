@@ -6,11 +6,17 @@ using System.Drawing.Imaging;
 using System.Threading;
 using System.Windows.Forms;
 using DPUruNet;
+using System.Data;
+using System.Threading.Tasks;
 
 namespace MaxTechGym
 {
     public partial class Form_Main : Form
     {
+
+        //Tasks
+        private Task<DataTable> getAllFingerPrints;
+
 
         /// <summary>
         /// Holds fmds enrolled by the enrollment GUI.
@@ -34,6 +40,7 @@ namespace MaxTechGym
 
         public Form_Main()
         {
+            getAllFingerPrints = GymAPI.getAllFingerPrints();
             InitializeComponent();
         }
 
@@ -125,8 +132,6 @@ namespace MaxTechGym
         /// <returns>Returns true if successful; false if unsuccessful</returns>
         public bool OpenReader()
         {
-            //TODO DELETE THIS LINE BELOW
-            //return true;
             reset = false;
             Constants.ResultCode result = Constants.ResultCode.DP_DEVICE_FAILURE;
 
@@ -356,21 +361,24 @@ namespace MaxTechGym
 
 
 
-        private void Form_Main_Load(object sender, EventArgs e)
+        private async void Form_Main_Load(object sender, EventArgs e)
         {
+
             this.BackColor = (Color)Properties.Settings.Default["BackgroundColor"];
 
             ReaderCollection readers = ReaderCollection.GetReaders();
             currentReader = readers[0];
 
             //If there is no reader connected. Close the app.
-            //TODO DELETE THIS 
             if (currentReader == null)
             {
                 MessageBox.Show("No se detecto ningun lector conectado, la aplicacion cerrara.");
                 Application.Exit();
                 return;
             }
+
+            //get all the FMDs (fingerprints)
+            Program.fingerprints = await getAllFingerPrints;
         }
 
 
@@ -378,7 +386,7 @@ namespace MaxTechGym
         {
             if(Program.DEBUG_MODE == true)
             {
-                Program.CLIENTE = Program.TEST_CLIENT;
+                Program.CLIENT = Program.TEST_CLIENT;
             }
             else
             {

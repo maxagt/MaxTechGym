@@ -128,7 +128,7 @@ namespace MaxTechGym
             string comentarios2 = comentarios.Text;
             string formaPago = formaPagoCombo.Text;
             string firma = Guid.NewGuid().ToString("N");
-            string values = "'" + id + "','" + nombre + "','" + concepto2 + "','" + totalAPagar + "','" + pagado + "','" + fechaHoy.ToString("yyyy-MM-dd") + "','" + comentarios2 + "','" + formaPago + "','" + Program.CLIENTE + "'";
+            string values = "'" + id + "','" + nombre + "','" + concepto2 + "','" + totalAPagar + "','" + pagado + "','" + fechaHoy.ToString("yyyy-MM-dd") + "','" + comentarios2 + "','" + formaPago + "','" + Program.CLIENT + "'";
 
             // Insertar datos
             string sqlCommand = "insert into pagos (idAlumno, nombre, concepto, totalAPagar, pagado, fecha, comentarios, formaPago, cliente) VALUES (" + values + ")";

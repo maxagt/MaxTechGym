@@ -5,8 +5,8 @@ using MySql.Data.MySqlClient;
 using DPUruNet;
 using System.Data;
 using System.Text.RegularExpressions;
-
-
+using System.Net.Http;
+using MaxTechGym.Models;
 
 namespace MaxTechGym
 {
@@ -20,7 +20,7 @@ namespace MaxTechGym
         List<Fmd> preenrollmentFmds;
         DataResult<Fmd> resultEnrollment;
         int count;
-        bool huellaCapturada;
+        bool fingerprintCaptured;
 
         public Enrollment()
         {
@@ -47,7 +47,7 @@ namespace MaxTechGym
 
             preenrollmentFmds = new List<Fmd>();
             count = 0;
-            huellaCapturada = false;
+            fingerprintCaptured = false;
             registrarAlumno.Enabled = true;
             preenrollmentFmds.Clear();
 
@@ -97,8 +97,8 @@ namespace MaxTechGym
                     if (resultEnrollment.ResultCode == Constants.ResultCode.DP_SUCCESS)
                     {
                         SendMessage(Action.SendMessage, "\r\nLa huella digital ha sido registrada!");
-                        huellaCapturada = true;
-                        if (huellaCapturada)
+                        fingerprintCaptured = true;
+                        if (fingerprintCaptured)
                             SendMessage(Action.habilitarRegistro, null);
 
                         count = 0;
@@ -110,7 +110,7 @@ namespace MaxTechGym
                         SendMessage(Action.SendMessage, "Coloca el dedo indice derecho en el lector.");
                         preenrollmentFmds.Clear();
                         count = 0;
-                        huellaCapturada = false;
+                        fingerprintCaptured = false;
                         return;
                     }
                 }
@@ -178,60 +178,63 @@ namespace MaxTechGym
 
         private bool existeHuella(DataResult<Fmd> resultEnrollment)
         {
-            if (!huellaCapturada) return false;
-
             int DPFJ_PROBABILITY_ONE = 0x7fffffff;
-            MySqlDataReader lReader = Form_Main.sqlExec("select huella,id from asociado where huella is not null");
+            
             // populate all fmds
-            DataTable dt = new DataTable();
-            dt.Load(lReader);
-            Fmd[] allDBFmd1s = new Fmd[dt.Rows.Count];
+            Fmd[] allFMDs = new Fmd[Program.fingerprints.Rows.Count];
 
-            int i = 0;
-            if (dt.Rows.Count != 0)
+            for (int i = 0; i<Program.fingerprints.Rows.Count; i++)
             {
-                foreach (System.Data.DataRow dr in dt.Rows)
-                {
-                    if (dr["huella"].ToString().Length != 0)
-                    {
-                        allDBFmd1s[i] = Fmd.DeserializeXml(dr["huella"].ToString());
-                    }
-                    i++;
-                }
+                allFMDs[i] = Fmd.DeserializeXml(Program.fingerprints.Rows[i]["fingerprint"].ToString());
             }
-            lReader.Close();
-
-            IdentifyResult identifyResult = Comparison.Identify(resultEnrollment.Data, 0, allDBFmd1s, (DPFJ_PROBABILITY_ONE * 1 / 100000), 1);
-
-            if (identifyResult.Indexes == null)
-                return false;
-            else
-                return (identifyResult.Indexes.Length > 0);
+            
+            IdentifyResult identifyResult = Comparison.Identify(resultEnrollment.Data, 0, allFMDs, (DPFJ_PROBABILITY_ONE * 1 / 100000), 1);
+            return ((identifyResult.Indexes != null) && (identifyResult.Indexes.Length > 0));
         }
 
 
 
-        private void registrarAlumno_Click(object sender, EventArgs e)
+        private async void registrarAlumno_Click(object sender, EventArgs e)
         {
 
-            // Obtener datos
-            string nombre = nombreBox.Text;
+            // Create new member objet
+            Member member = new Member();
+
+            // Obtain data
+            member.name = nombreBox.Text;
             DateTime fechaNacimiento = fechaNacimientoBox.Value;
-
-            string genero;
-            if (generoBox.SelectedItem == null) genero = ""; else genero = generoBox.SelectedItem.ToString();
-            string comoSeEntero;
-            if (comoBox.SelectedItem == null) comoSeEntero = ""; else comoSeEntero = comoBox.SelectedItem.ToString();
-
-            string email = emailBox.Text;
-            string direccion = calleBox.Text + " " + coloniaBox.Text;
-            string municipio = municipioBox.Text;
-            string telefono = telefonoBox.Text;
-            DateTime fechaVencimiento = DateTime.Today;
+            member.birthDate = fechaNacimiento.ToString("yyyy-MM-dd");
 
 
-            // Validar datos obligatorios
-            // Nombre
+            if (generoBox.SelectedItem == null)
+            {
+                member.gender = "";
+            }
+            else
+            {
+                member.gender = generoBox.SelectedItem.ToString();
+            }
+                 
+
+            if (comoBox.SelectedItem == null)
+            {
+                member.howDidYouKnow = "";
+            }
+            else
+            {
+                member.howDidYouKnow = comoBox.SelectedItem.ToString();
+            }
+
+            member.email = emailBox.Text;
+            member.address = calleBox.Text + " " + coloniaBox.Text;
+            member.city = municipioBox.Text;
+            member.phone = telefonoBox.Text;
+            DateTime expDate = await GymAPI.GetDateTime();
+            member.expDate = expDate.ToString("yyyy-MM-dd");
+            member.lastVisit = member.expDate;
+
+            // Validate mandatory data
+            // Name
             if (nombreBox.Text == null || nombreBox.Text.Trim() == "")
             {
                 MessageBox.Show("El nombre del alumno es obligatorio!");
@@ -242,65 +245,65 @@ namespace MaxTechGym
 
             // Email
             Regex reg = new Regex(@"^([\w\.\-]+)@([\w\-]+)((\.(\w){2,3})+)$");
-            if (requerido.Checked == true && !reg.IsMatch(email))
+            if (requerido.Checked == true && !reg.IsMatch(member.email))
             {
                 MessageBox.Show("El correo electronico no es valido!");
                 emailBox.Select();
                 return;
             }
 
-            // Como se entero
-            if (comoSeEntero == "")
+            // How did you know
+            if (member.howDidYouKnow == "")
             {
                 MessageBox.Show("Debes seleccionar como se entero!");
                 return;
             }
 
-            // Genero
-            if (genero == "")
+            // Gender
+            if (member.gender == "")
             {
                 MessageBox.Show("Debes seleccionar el genero!");
                 return;
             }
 
-            // Obtener fecha del servidor
-            MySqlDataReader dataReader = Form_Main.sqlExec("SELECT NOW()");
-            if (dataReader.Read())
-            {
-                fechaVencimiento = dataReader.GetDateTime(0);
-            }
-
-
             // For practicity we only check that the year introduced is lower than the actual.
-            if (dataReader.GetDateTime(0).Year <= fechaNacimiento.Year)
+            if (expDate.Year <= fechaNacimiento.Year)
             {
                 MessageBox.Show("Debes introducir la fecha de nacimiento, verifica los datos");
                 return;
             }
 
-
-
-            // Verificar si ya existe huella
-            if (existeHuella(resultEnrollment))
-            {
-                MessageBox.Show("La huella ya existe en el sistema");
-                return;
-            }
-
-            // Insert data
-            if (huellaCapturada)
-            {
-                Form_Main.sqlExec("INSERT INTO asociado (nombre, fechaNacimiento, genero, email, comoSeEntero, direccion, municipio, telefono, fechaVencimiento, ultimaVisita, huella, cliente) VALUES ('" + nombre + "','" + fechaNacimiento.ToString("yyyy-MM-dd") + "','" + genero + "','" + email + "','" + comoSeEntero + "','" + direccion + "','" + municipio + "','" + telefono + "','" + fechaVencimiento.ToString("yyyy-MM-dd") + "', NOW(), '" + Fmd.SerializeXml(resultEnrollment.Data) + "','"+ Program.CLIENTE +"')");
-            }
-            else
+            // Check if the fingerprint has been captured
+            if (!fingerprintCaptured)
             {
                 MessageBox.Show("No se han capturado todas las huellas.");
                 return;
             }
 
+            // Verify if fingerprint already exists
+            if (existeHuella(resultEnrollment))
+            {
+                MessageBox.Show("La huella ya existe en el sistema");
+                return;
+            } 
+            else
+            {
+                member.fingerprint = Fmd.SerializeXml(resultEnrollment.Data);
+            }
 
-            MessageBox.Show("Alumno registrado!");
-            this.Close();
+            // Insert data
+            HttpResponseMessage message = await GymAPI.insertMember(member);
+
+            if(message.IsSuccessStatusCode)
+            {
+                MessageBox.Show("Alumno registrado!");
+                Close();
+            }
+            else
+            {
+                MessageBox.Show(message.ReasonPhrase);
+            }
+
 
         }
 

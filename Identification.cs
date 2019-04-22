@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Windows.Forms;
 using DPUruNet;
-using MySql.Data.MySqlClient;
 using System.Data;
 using System.Drawing;
+using System.Net.Http;
 
 namespace MaxTechGym
 {
@@ -15,8 +15,7 @@ namespace MaxTechGym
         public Form_Main _sender;
 
         private const int DPFJ_PROBABILITY_ONE = 0x7fffffff;
-        private static Fmd[] allDBFmd1s;
-        private static int[] allIdAsociados;
+        private static Fmd[] allDBFMDs;
 
         public Identification()
         {
@@ -28,41 +27,29 @@ namespace MaxTechGym
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
-        private void Identification_Load(object sender, System.EventArgs e)
+        private void Identification_Load(object sender, EventArgs e)
         {
-            MySqlDataReader lReader = Form_Main.sqlExec("select id, huella from asociado where huella is not null");
-
             // populate all fmds
-            DataTable dt = new DataTable();
-            dt.Load(lReader);
-            allDBFmd1s = new Fmd[dt.Rows.Count];
-            allIdAsociados = new int[dt.Rows.Count];
+            allDBFMDs = new Fmd[Program.fingerprints.Rows.Count];
             int i = 0;
 
-
-            // allfingerIDs = new int[dt.Rows.Count];
-            if (dt.Rows.Count != 0)
+            if (Program.fingerprints.Rows.Count > 0)
             {
-                foreach (System.Data.DataRow dr in dt.Rows)
+                foreach (DataRow dr in Program.fingerprints.Rows)
                 {
-                    if (dr["huella"].ToString().Length != 0)
-                    {
-                        allDBFmd1s[i] = Fmd.DeserializeXml(dr["huella"].ToString());
-                        allIdAsociados[i] = Convert.ToInt32(dr["id"]);
-                    }
+                    allDBFMDs[i] = Fmd.DeserializeXml(dr["fingerprint"].ToString());     
                     i++;
                 }
             }
-            lReader.Close();
 
             if (!_sender.OpenReader())
             {
-                this.Close();
+                Close();
             }
 
-            if (!_sender.StartCaptureAsync(this.OnCaptured))
+            if (!_sender.StartCaptureAsync(OnCaptured))
             {
-                this.Close();
+                Close();
             }
         }
 
@@ -71,30 +58,20 @@ namespace MaxTechGym
         /// Handler for when a fingerprint is captured.
         /// </summary>
         /// <param name="captureResult">contains info and data on the fingerprint capture</param>
-        private void OnCaptured(CaptureResult captureResult)
+        private async void OnCaptured(CaptureResult captureResult)
         {
+
             try
             {
                 // Check capture quality and throw an error if bad.
                 if (!_sender.CheckCaptureResult(captureResult)) return;
+
 
                 // Create bitmap
                 foreach (Fid.Fiv fiv in captureResult.Data.Views)
                 {
                     SendMessage(Action.SendBitmap, _sender.CreateBitmap(fiv.RawImage, fiv.Width, fiv.Height));
                 }
-            }
-            catch (Exception ex)
-            {
-                // Send error message, then close form
-                MessageBox.Show(ex.Message);
-            }
-
-
-            try
-            {
-                // Check capture quality and throw an error if bad.
-                if (!_sender.CheckCaptureResult(captureResult)) return;
 
                 DataResult<Fmd> resultConversion = FeatureExtraction.CreateFmdFromFid(captureResult.Data, Constants.Formats.Fmd.ANSI);
                 if (captureResult.ResultCode != Constants.ResultCode.DP_SUCCESS)
@@ -106,7 +83,7 @@ namespace MaxTechGym
                 // See the SDK documentation for an explanation on threshold scores.
                 int thresholdScore = DPFJ_PROBABILITY_ONE * 1 / 100000;
 
-                IdentifyResult identifyResult = Comparison.Identify(resultConversion.Data, 0, allDBFmd1s, thresholdScore, 1);
+                IdentifyResult identifyResult = Comparison.Identify(resultConversion.Data, 0, allDBFMDs, thresholdScore, 1);
 
                 if (identifyResult.ResultCode != Constants.ResultCode.DP_SUCCESS)
                 {
@@ -114,55 +91,61 @@ namespace MaxTechGym
                     throw new Exception(identifyResult.ResultCode.ToString());
                 }
                 
+                // If we cant find a match
                 if (identifyResult.Indexes.Length == 0)
                 {
-                    SendMessage(Action.NoEncontrado, null);
+                    SendMessage(Action.NotFound, null);
                 }
                 else
                 {
-                    // Obtener numero de asociado
-                    int noAsociado = allIdAsociados[identifyResult.Indexes[0][0]];
-
-                    // Obtener datos
-                    MySqlDataReader dataReader = Form_Main.sqlExec("select * from asociado where id = " + noAsociado.ToString());
-
-                    if (dataReader.Read())
+                    // If we find a match
+                    if (identifyResult.Indexes.Length > 0)
                     {
+                        // Position returned inside de FMD list
+                        int index = identifyResult.Indexes[0][0];
+
+                        // Get the member Id identified from the fingerprint capture
+                        string memberId = Program.fingerprints.Rows[index]["id"].ToString();
+
+                        // Call the API
+                        DataTable member = await GymAPI.getMemberById(memberId);
+                        DataRow memberData = member.Rows[0];
+
                         Double offset = Convert.ToDouble(Properties.Settings.Default["HourOffset"]);
-                        string nombre = dataReader.GetString("nombre");
-                        DateTime vencimiento = dataReader.GetDateTime("fechaVencimiento").AddHours(offset);
-                        int totalVisitas = dataReader.GetInt32("totalVisitas");
-                        DateTime ultimaVisita = dataReader.GetDateTime("ultimaVisita").AddHours(offset);
-                        string adeudo = dataReader.GetInt32("adeudo").ToString();
+                        string name = (string)memberData["name"];
+                        DateTime expDate = ((DateTime)memberData["expDate"]).AddHours(offset);
+                        int totalVisits = Convert.ToInt32(memberData["totalVisits"]);
+                        DateTime lastVisit = ((DateTime)memberData["lastVisit"]).AddHours(offset);
+                        string owed = memberData["owed"].ToString();
 
                         // Comparar fechas
-                        if ((vencimiento - DateTime.Now).TotalDays < 0)
-                            SendMessage(Action.Vencido, System.Drawing.Color.Red);
+                        if ((expDate - DateTime.Now).TotalDays < 0)
+                            SendMessage(Action.Vencido, Color.Red);
                         else
-                            if ((vencimiento - DateTime.Now).TotalDays <= 7)
-                                SendMessage(Action.PorVencer, System.Drawing.Color.Yellow);
+                            if ((expDate - DateTime.Now).TotalDays <= 7)
+                                SendMessage(Action.PorVencer, Color.Yellow);
                             else
                                 SendMessage(Action.NoVencido, default(Color));
 
-                        if (Convert.ToInt32(adeudo) > 0) 
-                            SendMessage(Action.adeudoPositivo, System.Drawing.Color.Yellow);
+                        if (Convert.ToInt32(owed) > 0) 
+                            SendMessage(Action.adeudoPositivo, Color.Yellow);
                         else
                             SendMessage(Action.NoAdeudo, default(Color));
 
 
-                        // Actualizar labels
-                        SendMessage(Action.Nombre, nombre);
-                        SendMessage(Action.NumeroAsociado, noAsociado.ToString());
-                        SendMessage(Action.ProximoPago, vencimiento.ToString("MMMM dd, yyyy", new System.Globalization.CultureInfo("es-MX")));
-                        SendMessage(Action.TotalVisitas, totalVisitas.ToString());
-                        SendMessage(Action.UltimaVisita, ultimaVisita);
-                        SendMessage(Action.Adeudo, adeudo);
+                        // Update labels
+                        SendMessage(Action.Name, name);
+                        SendMessage(Action.memberNumber, memberId);
+                        SendMessage(Action.nextPayment, expDate.ToString("MMMM dd, yyyy", new System.Globalization.CultureInfo("es-MX")));
+                        SendMessage(Action.totalVisits, totalVisits.ToString());
+                        SendMessage(Action.lastVisit, lastVisit);
+                        SendMessage(Action.owed, owed);
 
-                        // Actualizar asistencia de asociado
-                        Form_Main.sqlExec("UPDATE asociado set totalVisitas = totalVisitas+1, ultimaVisita = NOW()  where id = " + noAsociado);
+                        // Update visits from member
+                        HttpResponseMessage UpdateMessage = await GymAPI.updateMemberById(memberId);
 
-                        // Agregar visita a la tabla
-                        Form_Main.sqlExec("INSERT into visitas (fecha, idAsociado, cliente) values ( NOW(), " + noAsociado + ",'" + Program.CLIENTE + "')");
+                        // Add a visit to the table
+                        HttpResponseMessage InsertMessage = await GymAPI.insertVisitById(memberId);
 
 
                     }
@@ -180,29 +163,29 @@ namespace MaxTechGym
         /// <summary>
         /// Close window.
         /// </summary>
-        private void btnBack_Click(System.Object sender, System.EventArgs e)
+        private void btnBack_Click(object sender, EventArgs e)
         {
-            this.Close();
+            Close();
         }
 
         /// <summary>
         /// Close window.
         /// </summary>
-        private void Identification_Closed(object sender, System.EventArgs e)
+        private void Identification_Closed(object sender, EventArgs e)
         {
-            _sender.CancelCaptureAndCloseReader(this.OnCaptured);
+            _sender.CancelCaptureAndCloseReader(OnCaptured);
         }
 
         #region SendMessage
         private enum Action
         {
-            Nombre,
-            Adeudo,
-            NumeroAsociado,
-            ProximoPago,
-            TotalVisitas,
-            UltimaVisita,
-            NoEncontrado,
+            Name,
+            owed,
+            memberNumber,
+            nextPayment,
+            totalVisits,
+            lastVisit,
+            NotFound,
             SendBitmap,
             PorVencer,
             Vencido,
@@ -225,7 +208,7 @@ namespace MaxTechGym
                 {
                     switch (action)
                     {
-                        case Action.Nombre:
+                        case Action.Name:
                             nombreDesc.Text = (string)payload;
                             asistencia.Text = "Asistencia registrada";
                             asistencia.ForeColor = System.Drawing.Color.DarkGreen;
@@ -240,19 +223,19 @@ namespace MaxTechGym
                         case Action.NoAdeudo:
                             adeudo.BackColor = (Color)payload;
                             break;
-                        case Action.Adeudo:
+                        case Action.owed:
                             adeudo.Text = (string)payload;
                             break;
-                        case Action.NumeroAsociado:
+                        case Action.memberNumber:
                             noAsociadoDesc.Text = (string)payload;
                             break;
-                        case Action.ProximoPago:
+                        case Action.nextPayment:
                             vencimientoDesc.Text = (string)payload;
                             break;
-                        case Action.TotalVisitas:
+                        case Action.totalVisits:
                             totalVisitasDesc.Text = (string)payload;
                             break;
-                        case Action.UltimaVisita:
+                        case Action.lastVisit:
                             ultimaVisitaDesc.Text = Convert.ToString(payload);
                             break;
                         case Action.PorVencer:
@@ -261,7 +244,7 @@ namespace MaxTechGym
                         case Action.Vencido:
                             vencimientoDesc.BackColor = (Color)payload;
                             break;
-                        case Action.NoEncontrado:
+                        case Action.NotFound:
                             nombreDesc.Text = "";
                             adeudo.Text = "";
                             noAsociadoDesc.Text = "";

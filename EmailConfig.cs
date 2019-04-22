@@ -24,7 +24,7 @@ namespace MaxTechGym
         static EmailConfig()
         {
 
-            MySqlDataReader sqlReader = Form_Main.sqlExec("select * from emailConfig where cliente = '" + Program.CLIENTE + "'");
+            MySqlDataReader sqlReader = Form_Main.sqlExec("select * from emailConfig where cliente = '" + Program.CLIENT + "'");
             DataTable dataTable = new DataTable();
             dataTable.Load(sqlReader);
 

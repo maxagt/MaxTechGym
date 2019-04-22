@@ -58,9 +58,9 @@ namespace MaxTechGym
              else
              {
                 //Get the serial number
-                Program.CLIENTE = dt.Rows[0]["cliente"].ToString();
+                Program.CLIENT = dt.Rows[0]["cliente"].ToString();
                 DateTime deadLineDate = Convert.ToDateTime(dt.Rows[0]["fechaVencimiento"]);
-                lReader = Form_Main.sqlExec("select serialnumber from lectores where cliente = '" + Program.CLIENTE + "'");
+                lReader = Form_Main.sqlExec("select serialnumber from lectores where cliente = '" + Program.CLIENT + "'");
                 dt = new DataTable();
                 dt.Load(lReader);
                 if(dt.Rows.Count == 0)

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Windows.Forms;
 using System.Drawing;
+using System.Data;
 
 //! @cond
 namespace MaxTechGym
@@ -9,10 +10,13 @@ namespace MaxTechGym
     {
         //GLOBAL VARIABLES
         public static String READER_SERIAL_NUMBER = "";
-        public static String CLIENTE = "testclient";
-        public static bool DEBUG_MODE = false;
+        public static String CLIENT = "testclient";
+        public static bool DEBUG_MODE = true;
         public static bool USING_READER = true;
         public static String TEST_CLIENT = "testclient";
+        public static String USERNAME = "";
+        public static String PASSWORD = "";
+        public static DataTable fingerprints;
 
         /// <summary>
         /// The main entry point for the application.

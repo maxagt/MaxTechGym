@@ -4,35 +4,41 @@ using DPUruNet;
 using MySql.Data.MySqlClient;
 using System.Data;
 using System.Drawing;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Web;
 
 namespace MaxTechGym
 {
     public partial class BuscarAlumnos : Form
     {
         /// <summary>
-        /// Holds the main form with many functions common to all of SDK actions.
+        /// Holds the main form
         /// </summary>
         public Form_Main _sender;
 
         private const int DPFJ_PROBABILITY_ONE = 0x7fffffff;
-        private static DateTime fechaActual;
+        private static DateTime currentDate;
+        private Task<DateTime> getCurrentDate;
+        private Task<DataTable> getMembers;
 
         public BuscarAlumnos()
         {
+            getCurrentDate = GymAPI.GetDateTime();
+            getMembers = GymAPI.getMembers(string.Empty);
             InitializeComponent();
         }
 
         /// <summary>
         /// Initialize the form.
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
-        private void BuscarAlumnos_Load(object sender, System.EventArgs e)
+        private async void  BuscarAlumnos_Load(object sender, EventArgs e)
         {
-            // Borramos los elementos del grid
+            // Delete elements from grid
             listaAlumnos.Rows.Clear();
 
-            // Centramos las celdas y encabezados
+            // Center all columns
             listaAlumnos.Columns[0].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter; //cells alignment
             listaAlumnos.Columns[0].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter; //header alignment
 
@@ -46,34 +52,30 @@ namespace MaxTechGym
             listaAlumnos.Columns[3].HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter; //header alignment 
 
 
-            // Nos traemos los datos
-            MySqlDataReader lReader = Form_Main.sqlExec("select id, nombre, email, fechaNacimiento from asociado LIMIT 50");
-            DataTable dt = new DataTable();
-            dt.Load(lReader);
+            // Get 50 members from API call
+            DataTable dt = await getMembers;
 
-            // Obtenemos fecha del server
-            MySqlDataReader reader = Form_Main.sqlExec("select NOW()");
-            if (reader.Read())
-            {
-                fechaActual = reader.GetDateTime(0);
-            }
+            // Get DateTime from server API call
+            currentDate = await getCurrentDate;
+              
 
-            // LLenamos el datagrid con los primeros 50 alumnos
+
+            // Fill the datagrid with first 50 members
             for (int i = 0; i < dt.Rows.Count; i++)
             {
-                DateTime nacimiento = (DateTime)dt.Rows[i]["fechaNacimiento"];
-                int edad = fechaActual.Year - nacimiento.Year;
+                DateTime nacimiento = (DateTime)dt.Rows[i]["birthDate"];
+                int edad = currentDate.Year - nacimiento.Year;
 
                 DataGridViewRow row = new DataGridViewRow();
                 row.CreateCells(listaAlumnos);
                 row.Cells[0].Value = dt.Rows[i]["id"];
-                row.Cells[1].Value = dt.Rows[i]["nombre"];
+                row.Cells[1].Value = dt.Rows[i]["name"];
                 row.Cells[2].Value = edad;
                 row.Cells[3].Value = dt.Rows[i]["email"];
                 listaAlumnos.Rows.Add(row);
             }
 
-            // Validamos que el reader este abierto
+            // Validate that the reader is open
             if (!_sender.OpenReader())
             {
                 this.Close();
@@ -90,14 +92,14 @@ namespace MaxTechGym
         /// Handler for when a fingerprint is captured.
         /// </summary>
         /// <param name="captureResult">contains info and data on the fingerprint capture</param>
-        private void OnCaptured(CaptureResult captureResult)
+        private async void OnCaptured(CaptureResult captureResult)
         {
             try
             {
                 // Check capture quality and throw an error if bad.
                 if (!_sender.CheckCaptureResult(captureResult)) return;
 
-                DataResult<Fmd> resultConversion = FeatureExtraction.CreateFmdFromFid(captureResult.Data, Constants.Formats.Fmd.ANSI);
+                DataResult<Fmd> capturedFingerprint = FeatureExtraction.CreateFmdFromFid(captureResult.Data, Constants.Formats.Fmd.ANSI);
                 if (captureResult.ResultCode != Constants.ResultCode.DP_SUCCESS)
                 {
                     _sender.Reset = true;
@@ -107,43 +109,44 @@ namespace MaxTechGym
                 // See the SDK documentation for an explanation on threshold scores.
                 int thresholdScore = DPFJ_PROBABILITY_ONE * 1 / 100000;
 
-                // Obtenemos los datos
-                MySqlDataReader lReader = Form_Main.sqlExec("select huella, id, nombre, email, fechaNacimiento from asociado where huella is not null");
-                DataTable dt = new DataTable();
-                dt.Load(lReader);
-                lReader.Close();
+                //Create an array of fmds
+                Fmd[] allFMDs = new Fmd[Program.fingerprints.Rows.Count];
 
-                Fmd[] allDBFmd1s = new Fmd[dt.Rows.Count];
-                int[] allIdAsociados = new int[dt.Rows.Count];
-                
-                int i = 0;
-                if (dt.Rows.Count != 0)
+                //Populate all Fmds using Fmd.DeserializeXml()
+                for (int i=0; i<Program.fingerprints.Rows.Count; i++)
                 {
-                    foreach (System.Data.DataRow dr in dt.Rows)
+                    if (Program.fingerprints.Rows[i]["fingerprint"].ToString().Length > 0)
                     {
-                        if (dr["huella"].ToString().Length != 0)
-                        {
-                            allDBFmd1s[i] = Fmd.DeserializeXml(dr["huella"].ToString());
-                            allIdAsociados[i] = Convert.ToInt32(dr["id"]);
-                        }
-                        i++;
+                        allFMDs[i] = Fmd.DeserializeXml(Program.fingerprints.Rows[i]["fingerprint"].ToString());
                     }
                 }
 
-                IdentifyResult identifyResult = Comparison.Identify(resultConversion.Data, 0, allDBFmd1s, thresholdScore, 1);
+                // This function compares the captured fingerprint to see if it matches one inside the FMD list.
+                IdentifyResult identifyResult = Comparison.Identify(capturedFingerprint.Data, 0, allFMDs, thresholdScore, 1);
 
+                // If we cant find a match
                 if (identifyResult.ResultCode != Constants.ResultCode.DP_SUCCESS)
                 {
                     _sender.Reset = true;
                     throw new Exception(identifyResult.ResultCode.ToString());
                 }
 
+                // If we find a match
                 if (identifyResult.Indexes.Length > 0)
                 {
-                    SendMessage(Action.AddRow, dt.Rows[identifyResult.Indexes[0][0]]);
+                    // Position returned inside de FMD list
+                    int index = identifyResult.Indexes[0][0];
+
+                    // Get the member Id identified from the fingerprint capture
+                    string memberId = Program.fingerprints.Rows[index]["id"].ToString();
+
+                    // Call the API
+                    DataTable member = await GymAPI.getMemberById(memberId);
+
+                    // Add row
+                    SendMessage(Action.AddRow, member.Rows[0]);
                 }
-                 
-                
+                                
             }
             catch (Exception ex)
             {
@@ -155,7 +158,7 @@ namespace MaxTechGym
         /// <summary>
         /// Close window.
         /// </summary>
-        private void btnBack_Click(System.Object sender, System.EventArgs e)
+        private void btnBack_Click(Object sender, EventArgs e)
         {
             this.Close();
         }
@@ -192,13 +195,13 @@ namespace MaxTechGym
                             listaAlumnos.Rows.Clear();
 
                             DataRow datos = (DataRow)payload;
-                            DateTime nacimiento = Convert.ToDateTime(datos["fechaNacimiento"]);
-                            int edad = fechaActual.Year - nacimiento.Year;
+                            DateTime nacimiento = Convert.ToDateTime(datos["birthDate"]);
+                            int edad = currentDate.Year - nacimiento.Year;
 
                             DataGridViewRow row = new DataGridViewRow();
                             row.CreateCells(listaAlumnos);
                             row.Cells[0].Value = datos["id"];
-                            row.Cells[1].Value = datos["nombre"];
+                            row.Cells[1].Value = datos["name"];
                             row.Cells[2].Value = edad;
                             row.Cells[3].Value = datos["email"];
                             listaAlumnos.Rows.Add(row);
@@ -227,35 +230,37 @@ namespace MaxTechGym
 
 
 
-        private void buscarAlumno_Click(object sender, EventArgs e)
+        private async void buscarAlumno_Click(object sender, EventArgs e)
         {
             int i = 0;
             listaAlumnos.Rows.Clear();
-            string busquedaTxt = buscarBox.Text.ToLower();
-            string busqueda = buscarBox.Text.ToLower();
-            int busquedaNumero;
-            int.TryParse(buscarBox.Text, out busquedaNumero);
 
-            // Nos traemos los datos
-            MySqlDataReader lReader = Form_Main.sqlExec("select id, nombre, email, fechaNacimiento from asociado where nombre LIKE '%" + busqueda + "%' or id = " + busquedaNumero + "");
-            DataTable dt = new DataTable();
-            dt.Load(lReader);
+            //  Build the parameter list
+            NameValueCollection queryString = HttpUtility.ParseQueryString(string.Empty);
 
-            foreach (System.Data.DataRow dr in dt.Rows)
+            //  Pass the memberFullName attribute.
+            queryString["memberFullName"] = buscarBox.Text.ToLower();            
+
+            // Call the API to get the members filtered
+            DataTable membersDataTable = await GymAPI.getMembers(queryString.ToString());
+
+            // Populte the datagrid
+            foreach (DataRow dr in membersDataTable.Rows)
             {
-                DateTime nacimiento = (DateTime)dt.Rows[i]["fechaNacimiento"];
-                int edad = fechaActual.Year - nacimiento.Year;
+                DateTime nacimiento = (DateTime)membersDataTable.Rows[i]["birthdate"];
+                int edad = currentDate.Year - nacimiento.Year;
 
                 DataGridViewRow row = new DataGridViewRow();
                 row.CreateCells(listaAlumnos);
-                row.Cells[0].Value = dt.Rows[i]["id"];
-                row.Cells[1].Value = dt.Rows[i]["nombre"];
+                row.Cells[0].Value = membersDataTable.Rows[i]["id"];
+                row.Cells[1].Value = membersDataTable.Rows[i]["name"];
                 row.Cells[2].Value = edad;
-                row.Cells[3].Value = dt.Rows[i]["email"];
+                row.Cells[3].Value = membersDataTable.Rows[i]["email"];
                 listaAlumnos.Rows.Add(row);
                 i++;
             }
         }
+
 
         private void buscarBox_Enter(object sender, EventArgs e)
         {

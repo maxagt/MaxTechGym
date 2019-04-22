@@ -39,10 +39,10 @@
             this.realizarPago = new System.Windows.Forms.ToolStripMenuItem();
             this.editar = new System.Windows.Forms.ToolStripMenuItem();
             this.verVisitas = new System.Windows.Forms.ToolStripMenuItem();
+            this.detalleDeAsociadoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.buscarBox = new System.Windows.Forms.TextBox();
             this.buscarAlumno = new System.Windows.Forms.Button();
             this.label1 = new System.Windows.Forms.Label();
-            this.detalleDeAsociadoToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             ((System.ComponentModel.ISupportInitialize)(this.listaAlumnos)).BeginInit();
             this.contextMenu.SuspendLayout();
             this.SuspendLayout();
@@ -109,28 +109,35 @@
             this.verVisitas,
             this.detalleDeAsociadoToolStripMenuItem});
             this.contextMenu.Name = "contextMenu";
-            this.contextMenu.Size = new System.Drawing.Size(181, 114);
+            this.contextMenu.Size = new System.Drawing.Size(177, 92);
             // 
             // realizarPago
             // 
             this.realizarPago.Name = "realizarPago";
-            this.realizarPago.Size = new System.Drawing.Size(180, 22);
+            this.realizarPago.Size = new System.Drawing.Size(176, 22);
             this.realizarPago.Text = "Realizar pago";
             this.realizarPago.Click += new System.EventHandler(this.realizarPago_Click);
             // 
             // editar
             // 
             this.editar.Name = "editar";
-            this.editar.Size = new System.Drawing.Size(180, 22);
+            this.editar.Size = new System.Drawing.Size(176, 22);
             this.editar.Text = "Editar";
             this.editar.Click += new System.EventHandler(this.editar_Click);
             // 
             // verVisitas
             // 
             this.verVisitas.Name = "verVisitas";
-            this.verVisitas.Size = new System.Drawing.Size(180, 22);
+            this.verVisitas.Size = new System.Drawing.Size(176, 22);
             this.verVisitas.Text = "Ver visitas";
             this.verVisitas.Click += new System.EventHandler(this.verVisitas_Click);
+            // 
+            // detalleDeAsociadoToolStripMenuItem
+            // 
+            this.detalleDeAsociadoToolStripMenuItem.Name = "detalleDeAsociadoToolStripMenuItem";
+            this.detalleDeAsociadoToolStripMenuItem.Size = new System.Drawing.Size(176, 22);
+            this.detalleDeAsociadoToolStripMenuItem.Text = "Detalle de asociado";
+            this.detalleDeAsociadoToolStripMenuItem.Click += new System.EventHandler(this.detalleDeAsociadoToolStripMenuItem_Click);
             // 
             // buscarBox
             // 
@@ -155,16 +162,9 @@
             this.label1.AutoSize = true;
             this.label1.Location = new System.Drawing.Point(62, 17);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(146, 13);
+            this.label1.Size = new System.Drawing.Size(99, 13);
             this.label1.TabIndex = 4;
-            this.label1.Text = "Buscar por nombre o numero:";
-            // 
-            // detalleDeAsociadoToolStripMenuItem
-            // 
-            this.detalleDeAsociadoToolStripMenuItem.Name = "detalleDeAsociadoToolStripMenuItem";
-            this.detalleDeAsociadoToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
-            this.detalleDeAsociadoToolStripMenuItem.Text = "Detalle de asociado";
-            this.detalleDeAsociadoToolStripMenuItem.Click += new System.EventHandler(this.detalleDeAsociadoToolStripMenuItem_Click);
+            this.label1.Text = "Buscar por nombre:";
             // 
             // BuscarAlumnos
             // 
